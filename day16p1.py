@@ -1,89 +1,19 @@
+from enum import Enum
 import heapq
-directions = ["v", "<", "^", ">"] #down left up right
-xdirs = [0, -1, 0, 1]
-ydirs = [1, 0, -1, 0]
+from sys import maxsize
+from collections import defaultdict
 
-class Node:
-    def __init__(self, x, y, direction=None):
-        self.x = x
-        self.y = y
-        self.g = 0  # Cost from start
-        self.h = 0  # Heuristic cost to goal
-        self.f = 0  # Total cost (g + h)
-        self.parent = None
-        self.direction = direction  # Track direction to calculate turn cost
-
-    def __lt__(self, other):
-        return self.f < other.f
-
-def astar(grid, start, goal, turn_cost):
-    open_list = []
-    closed_set = set()
-
-    heapq.heappush(open_list, start)
-
-    while open_list:
-        current_node = heapq.heappop(open_list)
-        closed_set.add((current_node.x, current_node.y))
-
-        if current_node == goal:
-            return reconstPath(current_node)
-
-        for neighbor in getNeighbors(grid, current_node):
-            if (neighbor.x, neighbor.y) in closed_set:
-                continue
-
-            new_g = current_node.g + 1
-            if neighbor.direction != current_node.direction:
-                new_g += turn_cost  # Add turn cost if direction changes
-
-            if neighbor not in open_list or new_g < neighbor.g:
-                neighbor.g = new_g
-                neighbor.h = heuristic(neighbor, goal)
-                neighbor.f = neighbor.g + neighbor.h
-                neighbor.parent = current_node
-                neighbor.direction = getDirection(current_node, neighbor)
-                if neighbor not in open_list:
-                    heapq.heappush(open_list, neighbor)
-
-    return None  # No path found
-
-def reconstPath(node):
-    path = []
-    while node is not None:
-        path.append(node)
-        node = node.parent
-    return path[::-1]
-
-def getNeighbors(grid, node):
-    # Implement logic to get valid neighbors based on grid and movement rules
-    originX = node.x
-    originY = node.x
-    m = len(grid[0])
-    n= len(grid)
-    adj = set()
-    for i in range(4):
-        if originX + xdirs[i] < m and originX + xdirs[i] >= 0 and originY + ydirs[i] < n and originY + ydirs[i] >= 0:
-            if grid[originX + xdirs[i]][originY + ydirs[i]] != "#":
-                tmp = Node(originX + xdirs[i], originY + originX[i], i)
-                adj.add(tmp)
-    return adj
-
-def heuristic(node, goal):
-    #manh dist
-    return abs(goal.x - node.x) + abs(goal.y - node.y)
-
-def getDirection(node1, node2):
-    # calc direction
-    xdiff = node2.x - node1.x
-    ydiff = node2.y - node1.y
-    for i in range(4):
-        if xdiff==xdirs[i] and ydiff == ydirs[i]:
-            return i
 def getPos(char, grid):
     for row in grid:
         if char in row:
             return row.index(char), grid.index(row)
+def getWalls(char, grid):
+    walls = set()
+    for i, row in enumerate(grid):
+        for j, tile in enumerate(row):
+            if tile == char:
+                walls.add((j,i))
+    return walls
 
 if __name__ == "__main__":
     grid = [] #keep track
@@ -92,6 +22,83 @@ if __name__ == "__main__":
             grid.append(list(line.strip("\n")))
     start = getPos('S', grid)
     end = getPos('E', grid)
-    startNode = Node(start[0], start[1], 3)
-    endNode = Node(end[0], end[1])
-    path = astar(grid, startNode, endNode, 1000)
+    walls = getWalls('#', grid)
+    #print(walls)
+
+#define coordinate type
+coord = tuple[int,int]
+
+class dirs(Enum):
+    down = (0, 1)
+    left = (-1, 0)
+    up = (0, -1)
+    right = (1, 0)
+
+    def turnCW(self):
+        dir = self
+        match dir:
+            case dirs.down: dir = dirs.left
+            case dirs.left: dir = dirs.up
+            case dirs.up: dir = dirs.right
+            case dirs.right: dir = dirs.down
+        return dir
+    
+    def turnCCW(self):
+        dir = self
+        match dir:
+            case dirs.down: dir = dirs.right
+            case dirs.right: dir = dirs.up
+            case dirs.up: dir = dirs.left
+            case dirs.left: dir = dirs.down
+        return dir
+
+    def distTo(self, coord): #of type coord aka tuple of ints
+        x, y = coord
+        x2, y2 = self.value
+        return (x + x2, y + y2)
+    
+    def backTrack(self, coord): #for tracing all the paths back
+        x, y = coord
+        x2, y2 = self.value
+        return (x - x2, y - y2)
+
+    
+direction = dirs.right
+#define coordinate-direction pair
+pair = tuple[coord,direction]
+
+distances: dict[pair, int] = defaultdict(lambda: 999999999999999)
+distances[(start, direction)] = 0 #distance from the starting point will always be 0
+open_list = {(start, direction),}
+
+while open_list:
+    newcoord, direction = open_list.pop()
+    num = distances[newcoord, direction]
+
+    # check forward
+    forward = direction.distTo(newcoord)
+    if forward not in walls:
+        new_distance = num + 1
+        if distances[forward, direction] > new_distance:
+            distances[forward, direction] = new_distance
+            open_list.add((forward, direction))
+
+    # check clockwise turn
+    cw = direction.turnCW() 
+    if cw.distTo(newcoord) not in walls:
+        new_distance = num + 1000 #turn incurs 1000 penalty
+        if distances[newcoord, cw] > new_distance:
+            distances[newcoord, cw] = new_distance
+            open_list.add((newcoord, cw))
+
+    # check ccw turn
+    ccw = direction.turnCCW() 
+    if ccw.distTo(newcoord) not in walls:
+        new_distance = num + 1000 #turn incurs 1000 penalty
+        if distances[newcoord, ccw] > new_distance:
+            distances[newcoord, ccw] = new_distance
+            open_list.add((newcoord, ccw))
+    #print(open_list)
+print(distances[end,dirs.up])
+
+        
